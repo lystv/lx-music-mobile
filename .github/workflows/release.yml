@@ -3,7 +3,7 @@ name: Build
 on:
   push:
     branches:
-      - master
+      - master  # 如果你的默认分支是 main，请把这里改成 main
 
 jobs:
   Android:
@@ -12,20 +12,27 @@ jobs:
     steps:
       - name: Check out git repository
         uses: actions/checkout@v4
+
       - name: Setup Env
         uses: ./.github/actions/setup
+
       - name: Build Packages
         env:
           DISABLE_SVG: 1
         shell: bash
         run: |
           cd android
+          # 直接在编译前用命令明文生成签名文件，密码和别名已硬编码
           keytool -genkey -v -keystore app/release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias key -storepass 12345678 -keypass 12345678 -dname "CN=Android, OU=Android, O=Android, L=Loc, ST=Loc, C=CN"
+          
+          # 使用明文密钥参数直接执行 Gradle 打包
           ./gradlew assembleRelease \
             -PMYAPP_UPLOAD_STORE_FILE='release.jks' \
             -PMYAPP_UPLOAD_KEY_ALIAS='key' \
             -PMYAPP_UPLOAD_STORE_PASSWORD='12345678' \
             -PMYAPP_UPLOAD_KEY_PASSWORD='12345678'
+            
+          # 清理生成的签名文件
           rm -f app/release.jks
 
       # Push tag to GitHub if package.json version's tag is not tagged
@@ -33,6 +40,7 @@ jobs:
         run: |
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_ENV
+
       - name: Create git tag
         uses: pkgdeps/git-tag-action@v3
         with:
@@ -41,10 +49,12 @@ jobs:
           version: ${{ env.PACKAGE_VERSION }}
           git_commit_sha: ${{ github.sha }}
           git_tag_prefix: "v"
+
       - name: Generate file MD5
         run: |
           cd android/app/build/outputs/apk/release
           md5sum *.apk
+
       - name: Upload Artifact
         uses: ./.github/actions/upload-artifact
         env:
@@ -57,11 +67,13 @@ jobs:
     steps:
       - name: Check out git repository
         uses: actions/checkout@v4
+
       - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
           path: ./artifacts
           merge-multiple: true
+
       - name: Generate file MD5
         run: |
           echo -e '\n### File MD5\n```' >> ./publish/changeLog.md
@@ -69,10 +81,12 @@ jobs:
           md5sum *.apk >> ../publish/changeLog.md
           echo -e '```\n' >> ../publish/changeLog.md
           echo -e '\n[软件安装包说明](https://lyswhut.github.io/lx-music-doc/download#%E8%BD%AF%E4%BB%B6%E5%AE%89%E8%A3%85%E5%8C%85%E8%AF%B4%E6%98%8E)\n' >> ../publish/changeLog.md
+
       - name: Get package version
         run: |
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_ENV
+
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
